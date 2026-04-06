@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>SimpleBank V2 - Defi Bank</title>
+        <meta http-equiv=""Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'unsafe-eval' https:; connect-src *;">
+        <link rel="stylesheet" href="style.css">
+         <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
+ </head>
+<body>
+    <div class="container">
+    <h1> SimpleBank V2</h1>
+    <p style="text-align: center; color: #718096; margin-bottom: 20px;">Decentralized savings with interest</p>
+     
+    
+
+    <!-- Wallet Connection Card-->
+
+    <div class="card">
+        <span class="badge">Wallet</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <button id="connectButton">Connect MetaMask</button>
+        <div>
+            <span style="font-weight: 500; color: #2d3748;">Account</span>
+            <strong><span id="connectedAccount">Not Connected</span></strong>
+            </div>
+        </div>
+    </div>
+
+    <!--Balances Card-->
+
+    <div class="card">
+        <span class="badge">Balances</span>
+        <div class="info-grid">
+            <div class="info-item">
+        <div class="info-label">Your Balance</div>
+         <div class="info-value"><span id="userBalance">0</span>ETH</div>
+            </div>
+             <div class="info-item">
+        <div class="info-label">Contract Balance</div>
+         <div class="info-value"><span id="contractBalance">0</span>ETH</div>
+            </div>
+             <div class="info-item">
+        <div class="info-label">Pending Interest</div>
+         <div class="info-value"><span id="pendingInterest">0</span>ETH</div>
+            </div>
+             <div class="info-item">
+        <div class="info-label">Interest Rate</div>
+         <div class="info-value"><span id="interestRate">0</span>%</div>
+            </div>
+            <div class="info-item">
+            <div class="info-label">Max Deposit</div>
+            <div class="info-value" id="maxDepositDisplay">0 ETH</div>
+            </div>
+        <div class="info-item">
+            <div class="info-label">Min deposit</div>
+            <div class="info-value" id="minDepositDisplay">0 ETH</div>
+        </div>
+
+        </div>
+        <div style="display: flex; justify-content: flex-end;">
+        <button id="refreshButton" class="secondary">Refresh</button>   
+        </div>
+    </div>
+
+    <!--Action Card-->
+    <div class="card">
+        <span class="badge">Actions</span>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <!--Deposit-->
+            <div>
+            <h3>Deposit</h3>
+            <div class="input-group">
+            <input type="number" id="depositAmount" placeholder="Amount in ETH" step="0.001" min="0.001">
+            <button id="maxDepositButton" class="secondary" style="background:#48bb78;">Max</button>
+            <button id="depositButton">Deposit</button>
+        </div>
+    </div>
+        <!--Withdraw-->
+    <div>
+        <h3>Withdraw</h3>
+        <div class="input-group">
+        <input type="number" id="withdrawAmount" placeholder="Amount in ETH" step="0.001" min="0.001">
+        <button id="withdrawAllButton" class="secondary" style="background:#ed8936;">All</button>
+        <button id="withdrawButton" class="danger">Withdraw</button>
+    </div>
+    </div>
+    </div>
+
+    <div class="card">
+        <h3>Interest</h3>
+        <button id="claimInterestButton">Claim Interest</button>
+    </div>
+
+    <div class="card">
+      <span class="badge">History</span>
+        <div id="transactionList" class="transaction-list">
+          <div id="loading-spinner">Loading transaction...</div>
+        </div>  
+        <div style="display: flex; justify-content: flex-end; margin-top: 15px;">
+        <button id="refreshHistoryButton" class="secondary">Refresh History</button>
+        <span id="txCount" style="color: #718096; font-size: 0.9rem;"></span>"
+    </div>
+    </div>
+
+    <!--Status Messages-->
+    
+    <div id="status" class="status info"></div>
+
+    <script src="contract-config.js"></script>
+    <script src="app.js"></script>
+
+    <!-- Interest Calculator-->
+     <div class="card">
+        <span class="badge">Interest Projection</span>
+        <div class="stats-grid">
+            <div class="stat-badge">
+            <div class="label">1 Day</div>
+            <div class="value" id="interest1Day">0 ETH</div>
+            </div>
+        <div class="stat-badge">
+            <div class="label">7 Days</div>
+            <div class="value" id="interest7Days">0 ETH</div>
+        </div>
+        <div class="stat-badge">
+            <div class="label">30 Days</div>
+            <div class="value" id="interest30Days">0 ETH</div>
+          </div>
+        </div>
+     </div>
+
+    
+</body>
+</html>
