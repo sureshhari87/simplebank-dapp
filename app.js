@@ -25,7 +25,8 @@
     const statusDiv = document.getElementById("status");
     const maxDepositButton = document.getElementById('maxDepositButton');
     const withdrawAllButton = document.getElementById('withdrawAllButton');
-
+    const tvlSpan = document.getElementById('tvl');
+    const depositorCountSpan = document.getElementById('depositorCount');
     
      // ==========================
      // HELPERS FUNCTIONS
@@ -68,6 +69,47 @@
         return `${address.substring(0, 6)}...${address.substring(38)}`;
     }
 
+    async function resolveContractConfig() {
+        const config = window.CONTRACT_CONFIG;
+        if (!config || !config.abi || !config.networks) {
+            throw new Error('Contract config not loaded');
+        }
+
+        const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+        const chainId = Number.parseInt(chainIdHex, 16);
+        const network = config.networks[chainId];
+
+        if (!network) {
+            throw new Error(`Unsupported network ${chainId}. Switch to Sepolia or Ethereum Mainnet.`);
+        }
+
+        if (!network.contractAddress) {
+            throw new Error(`No SimpleBank address configured for ${network.chainName}`);
+        }
+
+        config.address = network.contractAddress;
+        config.network = network;
+
+        return config;
+    }
+
+    function getDeploymentBlock() {
+        return window.CONTRACT_CONFIG?.network?.deploymentBlock || 0;
+    }
+
+    function getExplorerTxUrl(txHash) {
+        const config = window.CONTRACT_CONFIG;
+        if (config?.explorerTxUrl) return config.explorerTxUrl(txHash);
+
+        const explorer = config?.network?.blockExplorerUrls?.[0] || 'https://sepolia.etherscan.io';
+        return `${explorer}/tx/${txHash}`;
+    }
+
+    function showTransactionLink(txHash) {
+        if (!txHash) return;
+        showStatus(`View on Etherscan: ${getExplorerTxUrl(txHash)}`, 'info', 8000);
+    }
+
     
     // ===== BUTTON ORIGINAL TEXTS =====
     const originalButtonTexts = {
@@ -106,10 +148,7 @@
 
             web3 = new Web3(window.ethereum);
 
-            const config = window.CONTRACT_CONFIG;
-            if (!config || !config.address || !config.abi) {
-                throw new Error('Contract congif not loaded');
-            }
+            const config = await resolveContractConfig();
 
             bankContract = new web3.eth.Contract(config.abi, config.address);
 
@@ -139,10 +178,14 @@
 
         setButtonLoading(refreshButton, true, 'Refresh');
         try {
+            const interestCall = bankContract.methods.getClaimableInterest
+                ? bankContract.methods.getClaimableInterest(userAccount).call({from: userAccount})
+                : bankContract.methods.getPendingInterest(userAccount).call({from: userAccount});
+
             const [userBalanceWei, contractBalanceWei, pendingInterestWei, interestRateBasis] = await Promise.all([
             bankContract.methods.getBalance().call({ from: userAccount }),
             bankContract.methods.getContractBalance().call(),
-            bankContract.methods.getPendingInterest(userAccount).call({from: userAccount}),
+            interestCall,
             bankContract.methods.interestRate().call()
             ]);
 
@@ -152,9 +195,10 @@
             const interestRatePercent = (Number(interestRateBasis) /100).toFixed(2);
 
             if (userBalanceSpan) userBalanceSpan.textContent = parseFloat(userBalanceEth).toFixed(6);
-            if(contractBalanceSpan) contractBalanceSpan.textContent = parseFloat(contractBalanceEth).toFixed(6);
+            if (contractBalanceSpan) contractBalanceSpan.textContent = parseFloat(contractBalanceEth).toFixed(6);
             if (pendingInterestSpan) pendingInterestSpan.textContent = parseFloat(pendingInterestEth).toFixed(6);
             if (interestRateSpan) interestRateSpan.textContent = interestRatePercent;
+            if (tvlSpan) tvlSpan.textContent = parseFloat(contractBalanceEth).toFixed(6);
 
             if (parseFloat(pendingInterestEth) > 0) {
             showStatus(`You have ${parseFloat(pendingInterestEth).toFixed(6)} ETH pending interest!`, 'success', 3000);
@@ -199,6 +243,22 @@
         }
         }
 
+        if (bankContract.methods.maxTotalDeposits) {
+            try {
+                const maxTotalWei = await bankContract.methods.maxTotalDeposits().call();
+                const maxTotalElem = document.getElementById('maxTotalDepositsDisplay');
+                if (maxTotalElem) {
+                    maxTotalElem.textContent = BigInt(maxTotalWei) === 0n
+                        ? 'No cap'
+                        : parseFloat(web3.utils.fromWei(maxTotalWei, 'ether')).toFixed(6) + 'ETH';
+                }
+            } catch (e) {
+                console.warn('Could not fetch maxTotalDeposits', e);
+            }
+        }
+
+        await updateUniqueDepositors();
+
              showStatus('Balances updated', 'success', 2000);
              
         } catch (error) {
@@ -232,6 +292,13 @@
             const amountWei = web3.utils.toWei(amount, 'ether');
             showStatus(`Processing deposit of ${amount} ETH...`, 'info');
 
+            const minWei = await bankContract.methods.minDeposit().call();
+            if (BigInt(minWei) > 0n && BigInt(amountWei) < BigInt(minWei)) {
+                const minEth = web3.utils.fromWei(minWei, 'ether');
+                showStatus(`Minimum deposit is ${minEth} ETH`, 'error');
+                return;
+            }
+
             const tx = await bankContract.methods.deposit().send({
                 from: userAccount,
                 value: amountWei
@@ -244,17 +311,8 @@
                  updateBalances(),
                  loadTransactionHistory()
             ]);
-
-            const minWei = await bankContract.methods.minDeposit().call();
-            if (minWei > 0 && amountWei < minWei) {
-                const minEth = web3.utils.fromWei(minWei, 'ether');
-                showStatus(`Minimum deposit is ${minEth} ETH`, 'error');
-                return;
-            }
             
-      if (tx.transactionHash) {
-         showStatus(`View on Etherscan: Sepolia.etherscan.io/tx/${tx.transactionHash}`, 'info', 8000);
-      }
+            showTransactionLink(tx.transactionHash);
 
         } catch (error) {
             console.error( 'Deposit error:', error);
@@ -299,9 +357,7 @@
                 loadTransactionHistory()
             ]);
 
-            if (tx.transactionHash) {
-         showStatus(`View on Etherscan: Sepolia.etherscan.io/tx/${tx.transactionHash}`, 'info', 8000);
-      }
+            showTransactionLink(tx.transactionHash);
 
         } catch (error) {
             console.error('Withdraw error', error);
@@ -335,9 +391,7 @@
                 loadTransactionHistory()
             ]);
 
-         if (tx.transactionHash) {
-         showStatus(`View on Etherscan: Sepolia.etherscan.io/tx/${tx.transactionHash}`, 'info', 8000);
-      }
+         showTransactionLink(tx.transactionHash);
 
         } catch (error) {
             console.error('Claim interest error', error);
@@ -368,12 +422,12 @@
             const [depositEvents, withdrawEvents] = await Promise.all([
             bankContract.getPastEvents('Deposit', {
                 filter: { user: userAccount },
-                fromBlock: 0,
+                fromBlock: getDeploymentBlock(),
                 toBlock: 'latest'
             }),
-            bankContract.getPastEvents('Withdrawal', {
+            bankContract.getPastEvents('WithdrawalMade', {
                 filter: { user: userAccount },
-                fromBlock: 0,
+                fromBlock: getDeploymentBlock(),
                 toBlock: 'latest'
             })
         ]);
@@ -412,7 +466,7 @@
                 <div class="transaction-time">
                     Block: ${blockNumber}
                 </div>
-                <a href="https://sepolia.etherscan.io/tx/${txHash}" target="_blank" class="transaction-hash">
+                <a href="${getExplorerTxUrl(txHash)}" target="_blank" class="transaction-hash">
                 View
                 </a>
             </div>
@@ -543,6 +597,25 @@
         } catch (error) {
             console.error('Withdraw all error.', error);
             showStatus('Failed to get balance', 'error');
+        }
+    }
+
+    //===========================
+    //UNIQUE DEPOSITORS
+    //===========================
+
+    async function updateUniqueDepositors() {
+        if (!bankContract) return;
+        try {
+            const depositEvents = await bankContract.getPastEvents('Deposit', {
+                fromBlock: getDeploymentBlock(),
+                toBlock: 'latest'
+            });
+            const uniqueAddresses = new Set(depositEvents.map(e => e.returnValues.user));
+            const count = uniqueAddresses.size;
+            if (depositorCountSpan) depositorCountSpan.innerText = count;
+        } catch (error) {
+            console.error('Failed to fetch depositor count:', error);
         }
     }
 

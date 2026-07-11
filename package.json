@@ -1,23 +1,38 @@
 {
   "name": "simplebank-hardhat",
   "version": "1.0.0",
-  "description": "",
+  "description": "A production-ready Hardhat DeFi banking prototype with staking-style interest and withdrawal protections.",
   "main": "hardhat.config.js",
   "directories": {
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "compile": "hardhat compile && node scripts/generateFrontendConfig.js",
+    "generate:config": "node scripts/generateFrontendConfig.js",
+    "test": "hardhat test",
+    "coverage": "hardhat coverage",
+    "monitor": "node monitor.js",
+    "preflight:sepolia": "hardhat run scripts/preflight.js --network sepolia",
+    "preflight:mainnet": "hardhat run scripts/preflight.js --network mainnet",
+    "reserve:check:sepolia": "hardhat run scripts/checkInterestReserve.js --network sepolia",
+    "reserve:check:mainnet": "hardhat run scripts/checkInterestReserve.js --network mainnet",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "deploy:mainnet": "hardhat run scripts/deploy.js --network mainnet"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^6.1.2",
-    "hardhat": "^2.28.6"
+    "@tenderly/hardhat-tenderly": "^2.5.2",
+    "hardhat": "^2.28.6",
+    "hardhat-coverage": "^0.9.19",
+    "hardhat-gas-reporter": "^2.3.0"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^4.9.6"
+    "@openzeppelin/contracts": "^4.9.6",
+    "dotenv": "^16.6.1",
+    "web3": "^4.16.0"
   },
   "type": "commonjs"
 }

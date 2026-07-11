@@ -1,62 +1,94 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
-contract SimpleBankV2 is Ownable, ReentrancyGuard, Pausable {
-
-    // ========= ERRORS =========
+contract SimpleBankV2 is Ownable2Step, ReentrancyGuard, Pausable {
     error ZeroDeposit();
     error ZeroWithdrawal();
+    error ZeroRecovery();
     error InsufficientBalance(uint256 requested, uint256 available);
     error NoInterestYet();
     error RateTooHigh(uint256 provided, uint256 maxAllowed);
     error MaxDepositExceeded(uint256 amount, uint256 max);
+    error MaxTotalDepositsExceeded(uint256 amount, uint256 max);
     error BelowMinDeposit(uint256 sent, uint256 required);
-    
-    // ========= STATE =========
+    error WithdrawalLocked(uint256 unlockTime, uint256 currentTime);
+    error ZeroFunding();
+    error ZeroOwner();
+    error InsufficientInterestReserve(uint256 required, uint256 available);
+    error NoRecoverableSurplus(uint256 requested, uint256 available);
+    error DepositLimitTooHigh(uint256 provided, uint256 maxAllowed);
+    error MinDepositExceedsMaxDeposit(uint256 minDeposit, uint256 maxDeposit);
+    error WithdrawalLockOutOfRange(uint256 provided, uint256 minAllowed, uint256 maxAllowed);
+    error RenounceOwnershipDisabled();
+
+    uint256 public constant MAX_INTEREST_RATE = 500;
+    uint256 public constant MAX_DEPOSIT_LIMIT = type(uint128).max;
+    uint256 public constant MIN_WITHDRAWAL_LOCK_DAYS = 1;
+    uint256 public constant MAX_WITHDRAWAL_LOCK_DAYS = 30;
+
     mapping(address => uint256) private _balances;
     mapping(address => uint256) private _lastInterestTimestamp;
+    mapping(address => uint256) public lastDepositTime;
 
-    uint256 public interestRate; // basis points (100 = 1%)
+    uint16 public interestRate;
     uint256 public totalDeposits;
-    uint256 public maxDeposit;
-    uint256 public minDeposit;
-    
-    // ========= EVENTS =========
+    uint256 public interestReserve;
+    uint256 public maxTotalDeposits;
+    uint128 public maxDeposit;
+    uint128 public minDeposit;
+    uint16 public withdrawalLockDays = 7;
+
     event Deposit(address indexed user, uint256 amount);
-    event Withdrawal(address indexed user, uint256 amount);
+    event WithdrawalMade(address indexed user, uint256 amount);
     event InterestClaimed(address indexed user, uint256 interest);
     event InterestRateUpdated(uint256 oldRate, uint256 newRate);
     event MaxDepositUpdated(uint256 oldMax, uint256 newMax);
+    event MaxTotalDepositsUpdated(uint256 oldMax, uint256 newMax);
     event MinDepositUpdated(uint256 oldMin, uint256 newMin);
+    event WithdrawalLockDaysUpdated(uint256 oldDays, uint256 newDays);
+    event InterestReserveFunded(address indexed funder, uint256 amount);
+    event ETHRecovered(address indexed recipient, uint256 amount);
 
-    // ========= CONSTRUCTOR =========
-    constructor(uint256 _initialInterestRate) {
-        require(_initialInterestRate <= 500, "Rate too high (max 5%)");
-    interestRate = _initialInterestRate;
-}
-    // ========= MODIFIER =========
-    modifier respectMaxDeposit(uint256 amount) {
+    constructor(uint256 _initialInterestRate, address initialOwner, uint256 initialMaxTotalDeposits) {
+        if (_initialInterestRate > MAX_INTEREST_RATE) revert RateTooHigh(_initialInterestRate, MAX_INTEREST_RATE);
+        if (initialOwner == address(0)) revert ZeroOwner();
+        _transferOwnership(initialOwner);
+        interestRate = uint16(_initialInterestRate);
+        maxTotalDeposits = initialMaxTotalDeposits;
+    }
+
+    function _enforceDepositLimits(uint256 amount) private view {
         if (maxDeposit > 0 && _balances[msg.sender] + amount > maxDeposit) {
             revert MaxDepositExceeded(_balances[msg.sender] + amount, maxDeposit);
         }
-        _;
+
+        if (maxTotalDeposits > 0 && totalDeposits + amount > maxTotalDeposits) {
+            revert MaxTotalDepositsExceeded(totalDeposits + amount, maxTotalDeposits);
+        }
     }
 
-    // ========= INTERNAL INTEREST =========
-    function _applyInterest(address user) private returns (uint256) {
+    function _calculatePendingInterest(address user) private view returns (uint256) {
         uint256 balance = _balances[user];
         if (balance == 0) return 0;
 
         uint256 timePassed = block.timestamp - _lastInterestTimestamp[user];
         if (timePassed < 1 days) return 0;
 
-        uint256 interest = (balance * interestRate * timePassed) / (365 days * 10000);
+        return (balance * interestRate * timePassed) / (365 days * 10000);
+    }
 
+    function _applyInterest(address user) private returns (uint256) {
+        uint256 interest = _calculatePendingInterest(user);
         if (interest > 0) {
+            if (interestReserve < interest) {
+                revert InsufficientInterestReserve(interest, interestReserve);
+            }
+
+            interestReserve -= interest;
             _balances[user] += interest;
             totalDeposits += interest;
             _lastInterestTimestamp[user] = block.timestamp;
@@ -66,41 +98,39 @@ contract SimpleBankV2 is Ownable, ReentrancyGuard, Pausable {
         return interest;
     }
 
-// ========= CORE LOGIC =========
-//function _deposit(address user, uint256 amount) internal respectMaxDeposit(amount) {
-//  if (amount == 0) revert ZeroDeposit();
-//
-//      _applyInterest(user);
-//
-//       balances[user] += amount;
-//     totalDeposits += amount;
-//   lastInterestTimestamp[user] = block.timestamp;
-//
-//      emit Deposit(user, amount);
-//}
-
-    // ========= USER FUNCTIONS =========
-        
-    function deposit() public payable whenNotPaused nonReentrant respectMaxDeposit(msg.value) {
+    function deposit() public payable whenNotPaused nonReentrant {
         if (msg.value == 0) revert ZeroDeposit();
         if (minDeposit > 0 && msg.value < minDeposit) revert BelowMinDeposit(msg.value, minDeposit);
+
         _applyInterest(msg.sender);
-        _balances[msg.sender] += msg.value;
-        totalDeposits += msg.value;
+        _enforceDepositLimits(msg.value);
+
+        unchecked {
+            _balances[msg.sender] += msg.value;
+            totalDeposits += msg.value;
+        }
         _lastInterestTimestamp[msg.sender] = block.timestamp;
+        lastDepositTime[msg.sender] = block.timestamp;
         emit Deposit(msg.sender, msg.value);
     }
 
-    function withdraw(uint256 amount) external whenNotPaused nonReentrant {
+    function withdraw(uint256 amount) public nonReentrant {
         if (amount == 0) revert ZeroWithdrawal();
-        _applyInterest(msg.sender);
+
+        uint256 unlockTime = lastDepositTime[msg.sender] + (uint256(withdrawalLockDays) * 1 days);
+        if (block.timestamp < unlockTime) {
+            revert WithdrawalLocked(unlockTime, block.timestamp);
+        }
+
         uint256 balance = _balances[msg.sender];
         if (balance < amount) revert InsufficientBalance(amount, balance);
-        _balances[msg.sender] -= amount;
-        totalDeposits -= amount;
+        unchecked {
+            _balances[msg.sender] -= amount;
+            totalDeposits -= amount;
+        }
         (bool success, ) = payable(msg.sender).call{value: amount}("");
         require(success, "ETH transfer failed");
-        emit Withdrawal(msg.sender, amount);
+        emit WithdrawalMade(msg.sender, amount);
     }
 
     function claimInterest() external whenNotPaused nonReentrant returns (uint256) {
@@ -109,7 +139,6 @@ contract SimpleBankV2 is Ownable, ReentrancyGuard, Pausable {
         return interest;
     }
 
-    // ========= VIEW FUNCTIONS =========
     function getBalance() external view returns (uint256) {
         return _balances[msg.sender];
     }
@@ -121,46 +150,79 @@ contract SimpleBankV2 is Ownable, ReentrancyGuard, Pausable {
     function getBalanceWithInterest() external view returns (uint256) {
         uint256 balance = _balances[msg.sender];
         if (balance == 0) return 0;
-        uint256 timePassed = block.timestamp - _lastInterestTimestamp[msg.sender];
-        if (timePassed < 1 days) return balance;
-        uint256 interest = (balance * interestRate * timePassed) / (365 days * 10000);
-        return balance + interest;
+        return balance + _calculatePendingInterest(msg.sender);
     }
+
     function getPendingInterest(address user) external view returns (uint256) {
-        uint256 balance = _balances[user];
-        if (balance == 0) return 0;
-        uint256 timePassed = block.timestamp - _lastInterestTimestamp[user];
-        if (timePassed < 1 days) return 0;
-        return (balance * interestRate * timePassed) / (365 days * 10000);
+        return _calculatePendingInterest(user);
+    }
+
+    function getClaimableInterest(address user) external view returns (uint256) {
+        uint256 pendingInterest = _calculatePendingInterest(user);
+        if (pendingInterest == 0 || interestReserve < pendingInterest) return 0;
+        return pendingInterest;
     }
 
     function getContractBalance() external view returns (uint256) {
         return address(this).balance;
     }
 
+    function getRecoverableETH() public view returns (uint256) {
+        uint256 requiredBacking = totalDeposits + interestReserve;
+        uint256 contractBalance = address(this).balance;
+        if (contractBalance <= requiredBacking) return 0;
+        return contractBalance - requiredBacking;
+    }
+
     function getLastInterestTime(address user) external view returns (uint256) {
         return _lastInterestTimestamp[user];
     }
 
-    // ========= OWNER FUNCTIONS =========
+    function getLastDepositTime(address user) public view returns (uint256) {
+        return lastDepositTime[user];
+    }
+
     function setInterestRate(uint256 newRate) external onlyOwner {
-        if (newRate > 500) revert RateTooHigh(newRate, 500);
+        if (newRate > MAX_INTEREST_RATE) revert RateTooHigh(newRate, MAX_INTEREST_RATE);
         uint256 oldRate = interestRate;
-        interestRate = newRate;
+        interestRate = uint16(newRate);
         emit InterestRateUpdated(oldRate, newRate);
     }
 
     function setMaxDeposit(uint256 newMax) external onlyOwner {
+        if (newMax > MAX_DEPOSIT_LIMIT) revert DepositLimitTooHigh(newMax, MAX_DEPOSIT_LIMIT);
+        if (newMax > 0 && minDeposit > newMax) revert MinDepositExceedsMaxDeposit(minDeposit, newMax);
+
         uint256 oldMax = maxDeposit;
-        maxDeposit = newMax;
+        maxDeposit = uint128(newMax);
         emit MaxDepositUpdated(oldMax, newMax);
     }
 
+    function setMaxTotalDeposits(uint256 newMax) external onlyOwner {
+        uint256 oldMax = maxTotalDeposits;
+        maxTotalDeposits = newMax;
+        emit MaxTotalDepositsUpdated(oldMax, newMax);
+    }
+
     function setMinDeposit(uint256 newMin) external onlyOwner {
+        if (newMin > MAX_DEPOSIT_LIMIT) revert DepositLimitTooHigh(newMin, MAX_DEPOSIT_LIMIT);
+        if (maxDeposit > 0 && newMin > maxDeposit) revert MinDepositExceedsMaxDeposit(newMin, maxDeposit);
+
         uint256 oldMin = minDeposit;
-        minDeposit = newMin;
+        minDeposit = uint128(newMin);
         emit MinDepositUpdated(oldMin, newMin);
     }
+
+    function setWithdrawalLockDays(uint256 daysLock) external onlyOwner {
+        if (daysLock < MIN_WITHDRAWAL_LOCK_DAYS || daysLock > MAX_WITHDRAWAL_LOCK_DAYS) {
+            revert WithdrawalLockOutOfRange(daysLock, MIN_WITHDRAWAL_LOCK_DAYS, MAX_WITHDRAWAL_LOCK_DAYS);
+        }
+
+        uint256 oldDays = withdrawalLockDays;
+        withdrawalLockDays = uint16(daysLock);
+        emit WithdrawalLockDaysUpdated(oldDays, daysLock);
+    }
+
     function pause() external onlyOwner {
         _pause();
     }
@@ -169,13 +231,32 @@ contract SimpleBankV2 is Ownable, ReentrancyGuard, Pausable {
         _unpause();
     }
 
-    function recoverETH(uint256 amount) external onlyOwner {
-        require(amount <= address(this).balance, "Insufficient balance");
+    function fundInterestReserve() external payable onlyOwner {
+        if (msg.value == 0) revert ZeroFunding();
+        interestReserve += msg.value;
+        emit InterestReserveFunded(msg.sender, msg.value);
+    }
+
+    function recoverETH(uint256 amount) external onlyOwner nonReentrant {
+        if (amount == 0) revert ZeroRecovery();
+
+        uint256 recoverable = getRecoverableETH();
+        if (amount > recoverable) revert NoRecoverableSurplus(amount, recoverable);
+
+        emit ETHRecovered(owner(), amount);
         (bool success, ) = payable(owner()).call{value: amount}("");
         require(success, "Transfer failed");
     }
 
-    // ========= RECEIVE =========
+    function transferOwnership(address newOwner) public override onlyOwner {
+        if (newOwner == address(0)) revert ZeroOwner();
+        super.transferOwnership(newOwner);
+    }
+
+    function renounceOwnership() public view override onlyOwner {
+        revert RenounceOwnershipDisabled();
+    }
+
     receive() external payable whenNotPaused {
         deposit();
     }
