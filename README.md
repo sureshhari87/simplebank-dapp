@@ -43,7 +43,7 @@
 
 | Network | Address | Verification |
 |---------|---------|--------------|
-| Sepolia | `0x13e8e9f745E6E9f7Ab512fe25E153359AADCD73b` | [Etherscan](https://sepolia.etherscan.io/address/0x13e8e9f745E6E9f7Ab512fe25E153359AADCD73b) |
+| Sepolia | `0x01374a4b858E31DC779794A1e9F4F9207ec9a84e` | [Etherscan](https://sepolia.etherscan.io/address/0x01374a4b858E31DC779794A1e9F4F9207ec9a84e) |
 | Mainnet | *Coming soon after audit* | – |
 
 ## 🔧 Local Development

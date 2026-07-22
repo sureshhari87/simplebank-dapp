@@ -27,25 +27,60 @@
     const withdrawAllButton = document.getElementById('withdrawAllButton');
     const tvlSpan = document.getElementById('tvl');
     const depositorCountSpan = document.getElementById('depositorCount');
+    let statusClearTimer;
+    let persistentStatusActive = false;
     
      // ==========================
      // HELPERS FUNCTIONS
      // ==========================
 
-
-    function showStatus(message, type = "info", duration = 5000) {
+    function clearStatus() {
         if (statusDiv) {
-        statusDiv.textContent = message;
-        statusDiv.className = `status ${type}`;
-        if (duration > 0 && type === 'success') {
-            setTimeout(() => {
-                if (statusDiv.textContent === message) {
-                    statusDiv.textContent = "";
-                    statusDiv.className = 'status info';
-                }
-            }, duration);
+            statusDiv.textContent = "";
+            statusDiv.className = 'status info';
         }
+        persistentStatusActive = false;
     }
+
+    function showStatus(message, type = "info", duration = null) {
+        if (persistentStatusActive && type === 'success' && message === 'Balances updated') {
+            return;
+        }
+
+        if (statusClearTimer) {
+            clearTimeout(statusClearTimer);
+            statusClearTimer = undefined;
+        }
+
+        if (statusDiv) {
+            const effectiveDuration = duration === null ? (type === 'error' ? 0 : 5000) : duration;
+            persistentStatusActive = effectiveDuration === 0;
+            statusDiv.className = `status ${type}`;
+            statusDiv.replaceChildren();
+
+            const messageSpan = document.createElement('span');
+            messageSpan.className = 'status-message';
+            messageSpan.textContent = message;
+            statusDiv.appendChild(messageSpan);
+
+            if (persistentStatusActive) {
+                const closeButton = document.createElement('button');
+                closeButton.type = 'button';
+                closeButton.className = 'status-close';
+                closeButton.setAttribute('aria-label', 'Dismiss message');
+                closeButton.textContent = 'x';
+                closeButton.addEventListener('click', clearStatus);
+                statusDiv.appendChild(closeButton);
+            } else if (effectiveDuration > 0) {
+                statusClearTimer = setTimeout(() => {
+                    const currentMessage = statusDiv.querySelector('.status-message')?.textContent;
+                    if (currentMessage === message) {
+                        clearStatus();
+                    }
+                }, effectiveDuration);
+            }
+        }
+
         console.log(`[${type.toUpperCase()}] ${message}`);
     }
 
@@ -342,6 +377,27 @@
          setButtonLoading(withdrawButton, true, 'Withdraw');
         try {
             const amountWei = web3.utils.toWei(amount, 'ether');
+
+            const [userBalanceWei, lastDepositTime, withdrawalLockDays, latestBlock] = await Promise.all([
+                bankContract.methods.getBalance().call({ from: userAccount }),
+                bankContract.methods.getLastDepositTime(userAccount).call(),
+                bankContract.methods.withdrawalLockDays().call(),
+                web3.eth.getBlock('latest')
+            ]);
+
+            if (BigInt(userBalanceWei) < BigInt(amountWei)) {
+                showStatus('Withdrawal amount exceeds your SimpleBank balance.', 'error');
+                return;
+            }
+
+            const unlockTime = BigInt(lastDepositTime) + (BigInt(withdrawalLockDays) * 86400n);
+            const currentTime = BigInt(latestBlock.timestamp);
+            if (currentTime < unlockTime) {
+                const unlockDate = new Date(Number(unlockTime) * 1000).toLocaleString();
+                showStatus(`Withdrawal locked until ${unlockDate}.`, 'info', 0);
+                return;
+            }
+
             showStatus(`Processing withdrawal of ${amount} ETH...`, 'info');
 
            const tx = await bankContract.methods.withdraw(amountWei).send({
@@ -378,6 +434,21 @@
 
        setButtonLoading(claimInterestButton, true, 'Claim Interest');
     try {
+            const pendingWei = await bankContract.methods.getPendingInterest(userAccount).call({ from: userAccount });
+            const claimableWei = bankContract.methods.getClaimableInterest
+                ? await bankContract.methods.getClaimableInterest(userAccount).call({ from: userAccount })
+                : pendingWei;
+
+            if (BigInt(pendingWei) === 0n) {
+                showStatus('No interest claimable yet. Interest accrues after 1 full day.', 'info', 0);
+                return;
+            }
+
+            if (BigInt(claimableWei) === 0n) {
+                showStatus('Interest exists, but the reserve is not funded enough to claim it yet.', 'error');
+                return;
+            }
+
             showStatus('Claiming interest...', 'info');
 
             const tx = await bankContract.methods.claimInterest().send({
@@ -396,7 +467,7 @@
         } catch (error) {
             console.error('Claim interest error', error);
             if (error.message.includes('No interest available yet')) {
-            showStatus('No interest available yet. Interest accrues daily', 'info');
+            showStatus('No interest available yet. Interest accrues daily', 'info', 0);
             } else {
             showStatus(`Failed to claim interest: ${error.message}`, 'error');
         } 

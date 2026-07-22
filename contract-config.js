@@ -1007,7 +1007,7 @@ const NETWORKS = {
   11155111: {
     chainId: "0xaa36a7",
     chainName: "Sepolia Test Network",
-    contractAddress: "0x13e8e9f745E6E9f7Ab512fe25E153359AADCD73b",
+    contractAddress: "0x01374a4b858E31DC779794A1e9F4F9207ec9a84e",
     deploymentBlock: 0,
     rpcUrls: ["https://ethereum-sepolia.publicnode.com"],
     blockExplorerUrls: ["https://sepolia.etherscan.io"],
