@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
-contract SimpleBankV2 is Ownable2Step, ReentrancyGuard, Pausable {
+contract SimpleBankV3 is Ownable2Step, ReentrancyGuard, Pausable {
     error ZeroDeposit();
     error ZeroWithdrawal();
     error ZeroRecovery();
@@ -18,29 +18,38 @@ contract SimpleBankV2 is Ownable2Step, ReentrancyGuard, Pausable {
     error WithdrawalLocked(uint256 unlockTime, uint256 currentTime);
     error ZeroFunding();
     error ZeroOwner();
+    error ZeroTreasury();
     error InsufficientInterestReserve(uint256 required, uint256 available);
     error NoRecoverableSurplus(uint256 requested, uint256 available);
     error DepositLimitTooHigh(uint256 provided, uint256 maxAllowed);
     error MinDepositExceedsMaxDeposit(uint256 minDeposit, uint256 maxDeposit);
     error WithdrawalLockOutOfRange(uint256 provided, uint256 minAllowed, uint256 maxAllowed);
+    error FeeTooHigh(uint256 provided, uint256 maxAllowed);
+    error NoProtocolFees();
     error RenounceOwnershipDisabled();
 
+    uint256 public constant BASIS_POINTS = 10000;
     uint256 public constant MAX_INTEREST_RATE = 500;
     uint256 public constant MAX_DEPOSIT_LIMIT = type(uint128).max;
     uint256 public constant MIN_WITHDRAWAL_LOCK_DAYS = 1;
     uint256 public constant MAX_WITHDRAWAL_LOCK_DAYS = 30;
+    uint256 public constant MAX_FEE_BPS = 100;
 
     mapping(address => uint256) private _balances;
     mapping(address => uint256) private _lastInterestTimestamp;
     mapping(address => uint256) public lastDepositTime;
 
+    address public treasury;
     uint16 public interestRate;
+    uint16 public depositFeeBps;
+    uint16 public withdrawalFeeBps;
+    uint16 public withdrawalLockDays = 7;
     uint256 public totalDeposits;
     uint256 public interestReserve;
+    uint256 public protocolFees;
     uint256 public maxTotalDeposits;
     uint128 public maxDeposit;
     uint128 public minDeposit;
-    uint16 public withdrawalLockDays = 7;
 
     event Deposit(address indexed user, uint256 amount);
     event WithdrawalMade(address indexed user, uint256 amount);
@@ -52,13 +61,32 @@ contract SimpleBankV2 is Ownable2Step, ReentrancyGuard, Pausable {
     event WithdrawalLockDaysUpdated(uint256 oldDays, uint256 newDays);
     event InterestReserveFunded(address indexed funder, uint256 amount);
     event ETHRecovered(address indexed recipient, uint256 amount);
+    event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
+    event DepositFeeUpdated(uint256 oldFeeBps, uint256 newFeeBps);
+    event WithdrawalFeeUpdated(uint256 oldFeeBps, uint256 newFeeBps);
+    event DepositFeeCollected(address indexed user, uint256 fee, uint256 grossAmount, uint256 creditedAmount);
+    event WithdrawalFeeCollected(address indexed user, uint256 fee, uint256 debitedAmount, uint256 payoutAmount);
+    event ProtocolFeesClaimed(address indexed treasury, uint256 amount);
 
-    constructor(uint256 _initialInterestRate, address initialOwner, uint256 initialMaxTotalDeposits) {
+    constructor(
+        uint256 _initialInterestRate,
+        address initialOwner,
+        uint256 initialMaxTotalDeposits,
+        address initialTreasury
+    ) {
         if (_initialInterestRate > MAX_INTEREST_RATE) revert RateTooHigh(_initialInterestRate, MAX_INTEREST_RATE);
         if (initialOwner == address(0)) revert ZeroOwner();
+        if (initialTreasury == address(0)) revert ZeroTreasury();
+
         _transferOwnership(initialOwner);
+        treasury = initialTreasury;
         interestRate = uint16(_initialInterestRate);
         maxTotalDeposits = initialMaxTotalDeposits;
+    }
+
+    function _calculateFee(uint256 amount, uint16 feeBps) private pure returns (uint256) {
+        if (feeBps == 0) return 0;
+        return (amount * feeBps) / BASIS_POINTS;
     }
 
     function _enforceDepositLimits(uint256 amount) private view {
@@ -78,7 +106,7 @@ contract SimpleBankV2 is Ownable2Step, ReentrancyGuard, Pausable {
         uint256 timePassed = block.timestamp - _lastInterestTimestamp[user];
         if (timePassed < 1 days) return 0;
 
-        return (balance * interestRate * timePassed) / (365 days * 10000);
+        return (balance * interestRate * timePassed) / (365 days * BASIS_POINTS);
     }
 
     function _applyInterest(address user) private returns (uint256) {
@@ -103,15 +131,24 @@ contract SimpleBankV2 is Ownable2Step, ReentrancyGuard, Pausable {
         if (minDeposit > 0 && msg.value < minDeposit) revert BelowMinDeposit(msg.value, minDeposit);
 
         _applyInterest(msg.sender);
-        _enforceDepositLimits(msg.value);
+
+        uint256 fee = _calculateFee(msg.value, depositFeeBps);
+        uint256 creditedAmount = msg.value - fee;
+        _enforceDepositLimits(creditedAmount);
 
         unchecked {
-            _balances[msg.sender] += msg.value;
-            totalDeposits += msg.value;
+            _balances[msg.sender] += creditedAmount;
+            totalDeposits += creditedAmount;
         }
+
+        if (fee > 0) {
+            protocolFees += fee;
+            emit DepositFeeCollected(msg.sender, fee, msg.value, creditedAmount);
+        }
+
         _lastInterestTimestamp[msg.sender] = block.timestamp;
         lastDepositTime[msg.sender] = block.timestamp;
-        emit Deposit(msg.sender, msg.value);
+        emit Deposit(msg.sender, creditedAmount);
     }
 
     function withdraw(uint256 amount) public nonReentrant {
@@ -124,11 +161,21 @@ contract SimpleBankV2 is Ownable2Step, ReentrancyGuard, Pausable {
 
         uint256 balance = _balances[msg.sender];
         if (balance < amount) revert InsufficientBalance(amount, balance);
+
+        uint256 fee = _calculateFee(amount, withdrawalFeeBps);
+        uint256 payoutAmount = amount - fee;
+
         unchecked {
             _balances[msg.sender] -= amount;
             totalDeposits -= amount;
         }
-        (bool success, ) = payable(msg.sender).call{value: amount}("");
+
+        if (fee > 0) {
+            protocolFees += fee;
+            emit WithdrawalFeeCollected(msg.sender, fee, amount, payoutAmount);
+        }
+
+        (bool success, ) = payable(msg.sender).call{value: payoutAmount}("");
         require(success, "ETH transfer failed");
         emit WithdrawalMade(msg.sender, amount);
     }
@@ -137,6 +184,18 @@ contract SimpleBankV2 is Ownable2Step, ReentrancyGuard, Pausable {
         uint256 interest = _applyInterest(msg.sender);
         if (interest == 0) revert NoInterestYet();
         return interest;
+    }
+
+    function claimProtocolFees() external onlyOwner nonReentrant returns (uint256) {
+        uint256 amount = protocolFees;
+        if (amount == 0) revert NoProtocolFees();
+
+        protocolFees = 0;
+        emit ProtocolFeesClaimed(treasury, amount);
+
+        (bool success, ) = payable(treasury).call{value: amount}("");
+        require(success, "Protocol fee transfer failed");
+        return amount;
     }
 
     function getBalance() external view returns (uint256) {
@@ -168,7 +227,7 @@ contract SimpleBankV2 is Ownable2Step, ReentrancyGuard, Pausable {
     }
 
     function getRecoverableETH() public view returns (uint256) {
-        uint256 requiredBacking = totalDeposits + interestReserve;
+        uint256 requiredBacking = totalDeposits + interestReserve + protocolFees;
         uint256 contractBalance = address(this).balance;
         if (contractBalance <= requiredBacking) return 0;
         return contractBalance - requiredBacking;
@@ -187,6 +246,27 @@ contract SimpleBankV2 is Ownable2Step, ReentrancyGuard, Pausable {
         uint256 oldRate = interestRate;
         interestRate = uint16(newRate);
         emit InterestRateUpdated(oldRate, newRate);
+    }
+
+    function setDepositFeeBps(uint256 newFeeBps) external onlyOwner {
+        if (newFeeBps > MAX_FEE_BPS) revert FeeTooHigh(newFeeBps, MAX_FEE_BPS);
+        uint256 oldFeeBps = depositFeeBps;
+        depositFeeBps = uint16(newFeeBps);
+        emit DepositFeeUpdated(oldFeeBps, newFeeBps);
+    }
+
+    function setWithdrawalFeeBps(uint256 newFeeBps) external onlyOwner {
+        if (newFeeBps > MAX_FEE_BPS) revert FeeTooHigh(newFeeBps, MAX_FEE_BPS);
+        uint256 oldFeeBps = withdrawalFeeBps;
+        withdrawalFeeBps = uint16(newFeeBps);
+        emit WithdrawalFeeUpdated(oldFeeBps, newFeeBps);
+    }
+
+    function setTreasury(address newTreasury) external onlyOwner {
+        if (newTreasury == address(0)) revert ZeroTreasury();
+        address oldTreasury = treasury;
+        treasury = newTreasury;
+        emit TreasuryUpdated(oldTreasury, newTreasury);
     }
 
     function setMaxDeposit(uint256 newMax) external onlyOwner {

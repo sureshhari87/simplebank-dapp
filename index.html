@@ -3,14 +3,14 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>SimpleBank V2 - Defi Bank</title>
-        <meta http-equiv=""Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'unsafe-eval' https:; connect-src *;">
+        <title>SimpleBank V3 - DeFi Bank</title>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline'; connect-src *;">
         <link rel="stylesheet" href="style.css">
          <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
  </head>
 <body>
     <div class="container">
-    <h1> SimpleBank V2</h1>
+    <h1>SimpleBank V3</h1>
     <p style="text-align: center; color: #718096; margin-bottom: 20px;">Decentralized savings with interest</p>
      
     
@@ -24,6 +24,85 @@
         <div>
             <span style="font-weight: 500; color: #2d3748;">Account</span>
             <strong><span id="connectedAccount">Not Connected</span></strong>
+            </div>
+        </div>
+    </div>
+
+    <div id="suiteDashboard" class="card suite-dashboard" hidden>
+        <span class="badge">Suite Dashboard</span>
+        <div class="suite-status-row">
+            <div>
+                <div class="info-label">Overall Status</div>
+                <div class="suite-status" id="suiteOverallStatus">-</div>
+            </div>
+            <div>
+                <div class="info-label">Owner Alignment</div>
+                <div class="suite-status" id="suiteOwnerAlignment">-</div>
+            </div>
+            <button id="suiteRefreshButton" class="secondary">Refresh Suite</button>
+        </div>
+        <div class="suite-modules">
+            <div class="suite-module">
+                <div class="info-label">Fee Bank</div>
+                <div class="suite-module-status" id="suiteBankStatus">-</div>
+            </div>
+            <div class="suite-module">
+                <div class="info-label">Yield Vault</div>
+                <div class="suite-module-status" id="suiteVaultStatus">-</div>
+            </div>
+            <div class="suite-module">
+                <div class="info-label">Strategy Manager</div>
+                <div class="suite-module-status" id="suiteManagerStatus">-</div>
+            </div>
+            <div class="suite-module">
+                <div class="info-label">Lending Pool</div>
+                <div class="suite-module-status" id="suiteLendingStatus">-</div>
+            </div>
+            <div class="suite-module">
+                <div class="info-label">Swap Pool</div>
+                <div class="suite-module-status" id="suiteSwapStatus">-</div>
+            </div>
+        </div>
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Bank Deposits</div>
+                <div class="info-value"><span id="suiteBankDeposits">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Bank Reserve</div>
+                <div class="info-value"><span id="suiteBankReserve">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Vault Assets</div>
+                <div class="info-value"><span id="suiteVaultAssets">0</span> WETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Vault Strategy Assets</div>
+                <div class="info-value"><span id="suiteVaultStrategyAssets">0</span> WETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Lending Assets</div>
+                <div class="info-value"><span id="suiteLendingAssets">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Lending Debt</div>
+                <div class="info-value"><span id="suiteLendingDebt">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Swap Reserves</div>
+                <div class="info-value compact-value" id="suiteSwapReserves">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Swap Fees</div>
+                <div class="info-value compact-value" id="suiteSwapFees">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Protocol Fees</div>
+                <div class="info-value"><span id="suiteProtocolFees">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Suite User Position</div>
+                <div class="info-value"><span id="suiteUserPosition">0</span> ETH</div>
             </div>
         </div>
     </div>
@@ -79,68 +158,640 @@
     <!--Action Card-->
     <div class="card">
         <span class="badge">Actions</span>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-            <!--Deposit-->
+        <div class="action-grid">
             <div>
-            <h3>Deposit</h3>
-            <div class="input-group">
-            <input type="number" id="depositAmount" placeholder="Amount in ETH" step="0.001" min="0.001">
-            <button id="maxDepositButton" class="secondary" style="background:#48bb78;">Max</button>
-            <button id="depositButton">Deposit</button>
+                <h3>Deposit</h3>
+                <div class="input-group">
+                    <input type="number" id="depositAmount" placeholder="Amount in ETH" step="0.001" min="0.001">
+                    <button id="maxDepositButton" class="secondary">Max</button>
+                    <button id="depositButton">Deposit</button>
+                </div>
+            </div>
+            <div>
+                <h3>Withdraw</h3>
+                <div class="input-group">
+                    <input type="number" id="withdrawAmount" placeholder="Amount in ETH" step="0.001" min="0.001">
+                    <button id="withdrawAllButton" class="warning">All</button>
+                    <button id="withdrawButton" class="danger">Withdraw</button>
+                </div>
+            </div>
+        </div>
+        <div class="button-group">
+            <button id="claimInterestButton">Claim Interest</button>
         </div>
     </div>
-        <!--Withdraw-->
-    <div>
-        <h3>Withdraw</h3>
-        <div class="input-group">
-        <input type="number" id="withdrawAmount" placeholder="Amount in ETH" step="0.001" min="0.001">
-        <button id="withdrawAllButton" class="secondary" style="background:#ed8936;">All</button>
-        <button id="withdrawButton" class="danger">Withdraw</button>
+
+    <div id="vaultPanel" class="card vault-panel">
+        <span class="badge">Vault</span>
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Your Shares</div>
+                <div class="info-value"><span id="vaultUserShares">0</span> sbWETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Your Assets</div>
+                <div class="info-value"><span id="vaultUserAssets">0</span> WETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Vault TVL</div>
+                <div class="info-value"><span id="vaultTotalAssets">0</span> WETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Share Price</div>
+                <div class="info-value"><span id="vaultSharePrice">1.000000</span></div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Pending Yield</div>
+                <div class="info-value"><span id="vaultPendingYield">0</span> WETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Performance Fee</div>
+                <div class="info-value"><span id="vaultPerformanceFee">0</span> bps</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Vault APY</div>
+                <div class="info-value" id="vaultApy">N/A</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Vault Cap</div>
+                <div class="info-value" id="vaultMaxAssets">No cap</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Vault Owner</div>
+                <div class="info-value compact-value" id="vaultOwner">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Vault Treasury</div>
+                <div class="info-value compact-value" id="vaultTreasury">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Vault Status</div>
+                <div class="info-value" id="vaultPausedStatus">-</div>
+            </div>
+        </div>
+        <div class="action-grid">
+            <div>
+                <h3>Deposit ETH</h3>
+                <div class="input-group">
+                    <input type="number" id="vaultDepositAmount" placeholder="Amount in ETH" step="0.0001" min="0">
+                    <button id="vaultDepositButton">Deposit</button>
+                </div>
+            </div>
+            <div>
+                <h3>Redeem Shares</h3>
+                <div class="input-group">
+                    <input type="number" id="vaultRedeemShares" placeholder="Amount in sbWETH" step="0.000001" min="0">
+                    <button id="vaultRedeemAllButton" class="warning">All</button>
+                    <button id="vaultRedeemButton" class="danger">Redeem</button>
+                </div>
+            </div>
+        </div>
+        <div class="button-group">
+            <button id="vaultRefreshButton" class="secondary">Refresh Vault</button>
+            <button id="vaultHarvestButton" class="secondary">Harvest</button>
+        </div>
+        <div id="vaultOwnerActions" class="admin-actions" hidden>
+            <div class="admin-action">
+                <h3>Vault Fee</h3>
+                <div class="input-group">
+                    <input type="number" id="vaultPerformanceFeeBpsInput" placeholder="Fee bps" step="1" min="0" max="2000">
+                    <button id="vaultSetPerformanceFeeButton" class="secondary">Set Fee</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Vault Cap</h3>
+                <div class="input-group">
+                    <input type="number" id="vaultMaxAssetsInput" placeholder="Cap in WETH" step="0.000001" min="0">
+                    <button id="vaultSetMaxAssetsButton" class="secondary">Set Cap</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Vault Treasury</h3>
+                <div class="input-group">
+                    <input type="text" id="vaultTreasuryInput" placeholder="Treasury address">
+                    <button id="vaultSetTreasuryButton" class="secondary">Set Treasury</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Vault State</h3>
+                <div class="button-group">
+                    <button id="vaultPauseButton" class="warning">Pause</button>
+                    <button id="vaultUnpauseButton" class="secondary">Unpause</button>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <div id="strategyManagerPanel" class="card manager-panel" hidden>
+        <span class="badge">Strategy Manager</span>
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Manager</div>
+                <div class="info-value compact-value" id="managerAddress">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Vault Link</div>
+                <div class="info-value" id="managerVaultLinkStatus">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Owner</div>
+                <div class="info-value compact-value" id="managerOwner">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Asset</div>
+                <div class="info-value compact-value" id="managerAsset">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Total Managed</div>
+                <div class="info-value"><span id="managerTotalAssets">0</span> WETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Idle</div>
+                <div class="info-value"><span id="managerIdleAssets">0</span> WETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">In Strategies</div>
+                <div class="info-value"><span id="managerStrategyAssets">0</span> WETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Strategies</div>
+                <div class="info-value" id="managerStrategyCount">0</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Default Strategy</div>
+                <div class="info-value compact-value" id="managerDefaultStrategy">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Approved</div>
+                <div class="info-value" id="managerStrategyApproved">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Strategy Cap</div>
+                <div class="info-value" id="managerStrategyCap">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Remaining Capacity</div>
+                <div class="info-value" id="managerStrategyCapacity">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Aave Pool</div>
+                <div class="info-value compact-value" id="managerAavePool">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">aWETH</div>
+                <div class="info-value compact-value" id="managerAaveToken">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Aave Supply APY</div>
+                <div class="info-value" id="managerAaveApy">N/A</div>
+            </div>
+        </div>
+        <div class="button-group">
+            <button id="managerRefreshButton" class="secondary">Refresh Manager</button>
+        </div>
+        <div id="managerOwnerActions" class="admin-actions" hidden>
+            <div class="admin-action">
+                <h3>Strategy Cap</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="text" id="managerStrategyInput" placeholder="Strategy address">
+                    <input type="number" id="managerStrategyCapInput" placeholder="Cap in WETH" step="0.000001" min="0">
+                    <button id="managerSetStrategyCapButton" class="secondary">Set Cap</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Default Strategy</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="text" id="managerDefaultStrategyInput" placeholder="Strategy or zero address">
+                    <button id="managerSetDefaultStrategyButton" class="secondary">Set Default</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Divest Strategy</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="text" id="managerDivestStrategyInput" placeholder="Strategy address">
+                    <button id="managerDivestAllButton" class="warning">Divest All</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Rebalance</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="text" id="managerFromStrategyInput" placeholder="From strategy">
+                    <input type="text" id="managerToStrategyInput" placeholder="To strategy">
+                    <input type="number" id="managerRebalanceAmountInput" placeholder="Amount in WETH" step="0.000001" min="0">
+                    <button id="managerRebalanceButton" class="secondary">Rebalance</button>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <div id="lendingPanel" class="card lending-panel" hidden>
+        <span class="badge">Lending Pool</span>
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Pool</div>
+                <div class="info-value compact-value" id="lendingPoolAddress">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Owner</div>
+                <div class="info-value compact-value" id="lendingOwner">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Treasury</div>
+                <div class="info-value compact-value" id="lendingTreasury">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Status</div>
+                <div class="info-value" id="lendingPausedStatus">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Borrow APR</div>
+                <div class="info-value"><span id="lendingBorrowApr">0</span> bps</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Origination Fee</div>
+                <div class="info-value"><span id="lendingOriginationFee">0</span> bps</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Max LTV</div>
+                <div class="info-value"><span id="lendingMaxLtv">0</span> bps</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Liquidation Threshold</div>
+                <div class="info-value"><span id="lendingLiquidationThreshold">0</span> bps</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Liquidation Bonus</div>
+                <div class="info-value"><span id="lendingLiquidationBonus">0</span> bps</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Pool Cap</div>
+                <div class="info-value" id="lendingMaxPoolLiquidity">No cap</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Total Assets</div>
+                <div class="info-value"><span id="lendingTotalAssets">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Available Liquidity</div>
+                <div class="info-value"><span id="lendingAvailableLiquidity">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Total Debt</div>
+                <div class="info-value"><span id="lendingTotalDebt">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Total Collateral</div>
+                <div class="info-value"><span id="lendingTotalCollateral">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Protocol Fees</div>
+                <div class="info-value"><span id="lendingProtocolFees">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Your Supply Shares</div>
+                <div class="info-value"><span id="lendingUserShares">0</span> lpETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Your Supply Assets</div>
+                <div class="info-value"><span id="lendingUserSupplyAssets">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Your Collateral</div>
+                <div class="info-value"><span id="lendingUserCollateral">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Your Debt</div>
+                <div class="info-value"><span id="lendingUserDebt">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Borrow Capacity</div>
+                <div class="info-value"><span id="lendingBorrowCapacity">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Health Factor</div>
+                <div class="info-value" id="lendingHealthFactor">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Liquidatable</div>
+                <div class="info-value" id="lendingLiquidatable">-</div>
+            </div>
+        </div>
+        <div class="action-grid">
+            <div>
+                <h3>Supply</h3>
+                <div class="input-group">
+                    <input type="number" id="lendingSupplyAmount" placeholder="Amount in ETH" step="0.000001" min="0">
+                    <button id="lendingSupplyButton">Supply</button>
+                </div>
+            </div>
+            <div>
+                <h3>Withdraw Supply</h3>
+                <div class="input-group">
+                    <input type="number" id="lendingWithdrawShares" placeholder="Shares in lpETH" step="0.000001" min="0">
+                    <button id="lendingWithdrawAllButton" class="warning">All</button>
+                    <button id="lendingWithdrawSupplyButton" class="danger">Withdraw</button>
+                </div>
+            </div>
+            <div>
+                <h3>Open Loan</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="number" id="lendingCollateralAmount" placeholder="Collateral in ETH" step="0.000001" min="0">
+                    <input type="number" id="lendingBorrowAmount" placeholder="Borrow in ETH" step="0.000001" min="0">
+                    <div class="button-group">
+                        <button id="lendingDepositCollateralButton" class="secondary">Deposit Collateral</button>
+                        <button id="lendingBorrowButton">Borrow</button>
+                        <button id="lendingBorrowWithCollateralButton">Deposit + Borrow</button>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <h3>Close Loan</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="number" id="lendingRepayAmount" placeholder="Repay in ETH" step="0.000001" min="0">
+                    <input type="number" id="lendingWithdrawCollateralAmount" placeholder="Withdraw collateral in ETH" step="0.000001" min="0">
+                    <div class="button-group">
+                        <button id="lendingRepayAllButton" class="secondary">Repay All</button>
+                        <button id="lendingRepayButton">Repay</button>
+                        <button id="lendingWithdrawCollateralButton" class="danger">Withdraw Collateral</button>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <h3>Liquidate</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="text" id="lendingLiquidateBorrower" placeholder="Borrower address">
+                    <input type="number" id="lendingLiquidateRepayAmount" placeholder="Repay in ETH" step="0.000001" min="0">
+                    <button id="lendingLiquidateButton" class="warning">Liquidate</button>
+                </div>
+            </div>
+        </div>
+        <div class="button-group">
+            <button id="lendingRefreshButton" class="secondary">Refresh Lending</button>
+        </div>
+        <div id="lendingOwnerActions" class="admin-actions" hidden>
+            <div class="admin-action">
+                <h3>Rates</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="number" id="lendingBorrowAprInput" placeholder="Borrow APR bps" step="1" min="0" max="5000">
+                    <input type="number" id="lendingOriginationFeeInput" placeholder="Origination fee bps" step="1" min="0" max="100">
+                    <button id="lendingSetRatesButton" class="secondary">Set Rates</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Risk</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="number" id="lendingMaxLtvInput" placeholder="Max LTV bps" step="1" min="0" max="8000">
+                    <input type="number" id="lendingLiquidationThresholdInput" placeholder="Threshold bps" step="1" min="0" max="9000">
+                    <input type="number" id="lendingLiquidationBonusInput" placeholder="Bonus bps" step="1" min="0" max="2000">
+                    <button id="lendingSetRiskButton" class="secondary">Set Risk</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Pool Admin</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="number" id="lendingMaxLiquidityInput" placeholder="Pool cap in ETH" step="0.000001" min="0">
+                    <input type="text" id="lendingTreasuryInput" placeholder="Treasury address">
+                    <button id="lendingSetMaxLiquidityButton" class="secondary">Set Cap</button>
+                    <button id="lendingSetTreasuryButton" class="secondary">Set Treasury</button>
+                    <button id="lendingClaimFeesButton">Claim Fees</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Pool State</h3>
+                <div class="button-group">
+                    <button id="lendingPauseButton" class="warning">Pause</button>
+                    <button id="lendingUnpauseButton" class="secondary">Unpause</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="swapPanel" class="card swap-panel" hidden>
+        <span class="badge">DEX Swap Pool</span>
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Pool</div>
+                <div class="info-value compact-value" id="swapPoolAddress">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Owner</div>
+                <div class="info-value compact-value" id="swapOwner">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Treasury</div>
+                <div class="info-value compact-value" id="swapTreasury">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Status</div>
+                <div class="info-value" id="swapPausedStatus">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Token0</div>
+                <div class="info-value compact-value" id="swapToken0">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Token1</div>
+                <div class="info-value compact-value" id="swapToken1">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Swap Fee</div>
+                <div class="info-value"><span id="swapFeeBps">0</span> bps</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Protocol Share</div>
+                <div class="info-value"><span id="swapProtocolShareBps">0</span> bps</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Reserve0</div>
+                <div class="info-value compact-value" id="swapReserve0">0</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Reserve1</div>
+                <div class="info-value compact-value" id="swapReserve1">0</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Protocol Fees0</div>
+                <div class="info-value compact-value" id="swapProtocolFees0">0</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Protocol Fees1</div>
+                <div class="info-value compact-value" id="swapProtocolFees1">0</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Total LP Supply</div>
+                <div class="info-value"><span id="swapTotalLpSupply">0</span></div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Your LP Shares</div>
+                <div class="info-value"><span id="swapUserLpShares">0</span></div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Your Token0</div>
+                <div class="info-value compact-value" id="swapUserToken0Balance">0</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Your Token1</div>
+                <div class="info-value compact-value" id="swapUserToken1Balance">0</div>
+            </div>
+        </div>
+        <div class="action-grid">
+            <div>
+                <h3>Add Liquidity</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="number" id="swapAddToken0Amount" placeholder="Token0 amount" step="0.000001" min="0">
+                    <input type="number" id="swapAddToken1Amount" placeholder="Token1 amount" step="0.000001" min="0">
+                    <button id="swapAddLiquidityButton">Add Liquidity</button>
+                </div>
+            </div>
+            <div>
+                <h3>Swap</h3>
+                <div class="input-group stacked-inputs">
+                    <select id="swapTokenInSelect">
+                        <option value="token0">Token0 to Token1</option>
+                        <option value="token1">Token1 to Token0</option>
+                    </select>
+                    <input type="number" id="swapAmountIn" placeholder="Amount in" step="0.000001" min="0">
+                    <input type="number" id="swapMinAmountOut" placeholder="Minimum amount out" step="0.000001" min="0">
+                    <div class="info-value compact-value" id="swapQuote">Quote: -</div>
+                    <button id="swapExecuteButton">Swap</button>
+                </div>
+            </div>
+            <div>
+                <h3>Remove Liquidity</h3>
+                <div class="input-group">
+                    <input type="number" id="swapRemoveLpShares" placeholder="LP shares" step="0.000001" min="0">
+                    <button id="swapRemoveAllButton" class="warning">All</button>
+                    <button id="swapRemoveLiquidityButton" class="danger">Remove</button>
+                </div>
+            </div>
+        </div>
+        <div class="button-group">
+            <button id="swapRefreshButton" class="secondary">Refresh Swap</button>
+        </div>
+        <div id="swapOwnerActions" class="admin-actions" hidden>
+            <div class="admin-action">
+                <h3>Fees</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="number" id="swapFeeBpsInput" placeholder="Swap fee bps" step="1" min="0" max="100">
+                    <input type="number" id="swapProtocolShareBpsInput" placeholder="Protocol share bps" step="1" min="0" max="5000">
+                    <button id="swapSetFeeButton" class="secondary">Set Swap Fee</button>
+                    <button id="swapSetProtocolShareButton" class="secondary">Set Protocol Share</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Treasury</h3>
+                <div class="input-group stacked-inputs">
+                    <input type="text" id="swapTreasuryInput" placeholder="Treasury address">
+                    <button id="swapSetTreasuryButton" class="secondary">Set Treasury</button>
+                    <button id="swapClaimFeesButton">Claim Fees</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Pool State</h3>
+                <div class="button-group">
+                    <button id="swapPauseButton" class="warning">Pause</button>
+                    <button id="swapUnpauseButton" class="secondary">Unpause</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="adminPanel" class="card admin-panel" hidden>
+        <span class="badge">Owner</span>
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Treasury</div>
+                <div class="info-value compact-value" id="adminTreasury">-</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Protocol Fees</div>
+                <div class="info-value"><span id="adminProtocolFees">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Interest Reserve</div>
+                <div class="info-value"><span id="adminInterestReserve">0</span> ETH</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Deposit Fee</div>
+                <div class="info-value"><span id="adminDepositFeeBps">0</span> bps</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Withdrawal Fee</div>
+                <div class="info-value"><span id="adminWithdrawalFeeBps">0</span> bps</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Withdrawal Lock</div>
+                <div class="info-value"><span id="adminWithdrawalLockDays">0</span> days</div>
+            </div>
+        </div>
+        <div class="admin-actions">
+            <div class="admin-action">
+                <h3>Reserve</h3>
+                <div class="input-group">
+                    <input type="number" id="reserveAmount" placeholder="Amount in ETH" step="0.000001" min="0">
+                    <button id="fundReserveButton">Fund</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Fees</h3>
+                <div class="input-group">
+                    <input type="number" id="depositFeeBpsInput" placeholder="Deposit bps" step="1" min="0" max="100">
+                    <button id="setDepositFeeButton" class="secondary">Set Deposit</button>
+                </div>
+                <div class="input-group">
+                    <input type="number" id="withdrawalFeeBpsInput" placeholder="Withdrawal bps" step="1" min="0" max="100">
+                    <button id="setWithdrawalFeeButton" class="secondary">Set Withdraw</button>
+                </div>
+                <div class="input-group">
+                    <input type="number" id="withdrawalLockDaysInput" placeholder="Lock days" step="1" min="1" max="30">
+                    <button id="setWithdrawalLockButton" class="secondary">Set Lock</button>
+                </div>
+            </div>
+            <div class="admin-action">
+                <h3>Treasury</h3>
+                <div class="button-group">
+                    <button id="claimProtocolFeesButton">Claim Fees</button>
+                    <button id="refreshAdminButton" class="secondary">Refresh Owner</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="card">
-        <h3>Interest</h3>
-        <button id="claimInterestButton">Claim Interest</button>
-    </div>
-
-    <div class="card">
-      <span class="badge">History</span>
+        <span class="badge">History</span>
         <div id="transactionList" class="transaction-list">
-          <div id="loading-spinner">Loading transaction...</div>
-        </div>  
-        <div style="display: flex; justify-content: flex-end; margin-top: 15px;">
-        <button id="refreshHistoryButton" class="secondary">Refresh History</button>
-        <span id="txCount" style="color: #718096; font-size: 0.9rem;"></span>"
+            <div class="loading-spinner">Loading transaction...</div>
+        </div>
+        <div class="history-footer">
+            <button id="refreshHistoryButton" class="secondary">Refresh History</button>
+            <span id="txCount"></span>
+        </div>
     </div>
+
+    <!-- Interest Calculator-->
+    <div class="card">
+        <span class="badge">Interest Projection</span>
+        <div class="stats-grid">
+            <div class="stat-badge">
+                <div class="label">1 Day</div>
+                <div class="value" id="interest1Day">0 ETH</div>
+            </div>
+            <div class="stat-badge">
+                <div class="label">7 Days</div>
+                <div class="value" id="interest7Days">0 ETH</div>
+            </div>
+            <div class="stat-badge">
+                <div class="label">30 Days</div>
+                <div class="value" id="interest30Days">0 ETH</div>
+            </div>
+        </div>
     </div>
 
     <!--Status Messages-->
-    
     <div id="status" class="status info"></div>
 
     <script src="contract-config.js"></script>
     <script src="app.js"></script>
-
-    <!-- Interest Calculator-->
-     <div class="card">
-        <span class="badge">Interest Projection</span>
-        <div class="stats-grid">
-            <div class="stat-badge">
-            <div class="label">1 Day</div>
-            <div class="value" id="interest1Day">0 ETH</div>
-            </div>
-        <div class="stat-badge">
-            <div class="label">7 Days</div>
-            <div class="value" id="interest7Days">0 ETH</div>
-        </div>
-        <div class="stat-badge">
-            <div class="label">30 Days</div>
-            <div class="value" id="interest30Days">0 ETH</div>
-          </div>
-        </div>
-     </div>
 
     
 </body>

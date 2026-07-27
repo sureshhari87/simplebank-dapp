@@ -1,25 +1,21 @@
 require("dotenv").config();
-require("@nomicfoundation/hardhat-toolbox");
+require("@nomicfoundation/hardhat-ethers");
+require("@nomicfoundation/hardhat-chai-matchers");
+require("@nomicfoundation/hardhat-verify");
 require("solidity-coverage");
 require("hardhat-gas-reporter");
-
-if (process.env.TENDERLY_PROJECT || process.env.TENDERLY_USERNAME) {
-  require("@tenderly/hardhat-tenderly");
-}
 
 const {
   PRIVATE_KEY,
   SEPOLIA_RPC_URL,
   MAINNET_RPC_URL,
   ETHERSCAN_API_KEY,
-  TENDERLY_PROJECT,
-  TENDERLY_USERNAME,
   REPORT_GAS
 } = process.env;
 
 module.exports = {
   solidity: {
-    version: "0.8.19",
+    version: "0.8.26",
     settings: {
       optimizer: {
         enabled: true,
@@ -31,10 +27,6 @@ module.exports = {
     enabled: REPORT_GAS === "true",
     currency: "USD",
     gasPrice: 20
-  },
-  tenderly: {
-    project: TENDERLY_PROJECT || "simplebank",
-    username: TENDERLY_USERNAME || ""
   },
   networks: {
     hardhat: {},

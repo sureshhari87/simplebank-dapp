@@ -24,10 +24,25 @@ function resolveContractAddress(networkName) {
   return deployment.contractAddress;
 }
 
+function resolveContractName(networkName) {
+  if (process.env.CONTRACT_NAME) {
+    return process.env.CONTRACT_NAME;
+  }
+
+  const deploymentPath = getDeploymentPath(networkName);
+  if (!fs.existsSync(deploymentPath)) {
+    return "SimpleBankV2";
+  }
+
+  const deployment = JSON.parse(fs.readFileSync(deploymentPath, "utf8"));
+  return deployment.contractName || "SimpleBankV2";
+}
+
 async function main() {
   const networkName = hre.network.name;
   const contractAddress = resolveContractAddress(networkName);
-  const bank = await hre.ethers.getContractAt("SimpleBankV2", contractAddress);
+  const contractName = resolveContractName(networkName);
+  const bank = await hre.ethers.getContractAt(contractName, contractAddress);
 
   const [interestReserve, interestRate, maxTotalDeposits, totalDeposits] = await Promise.all([
     bank.interestReserve(),
@@ -43,6 +58,7 @@ async function main() {
 
   console.log("\nInterest reserve policy check");
   console.log("Network:", networkName);
+  console.log("Contract type:", contractName);
   console.log("Contract:", contractAddress);
   console.log("Interest rate:", `${Number(interestRate) / 100}%`);
   console.log("Total deposits:", `${hre.ethers.formatEther(totalDeposits)} ETH`);
@@ -70,4 +86,5 @@ if (require.main === module) {
 module.exports = {
   main,
   resolveContractAddress,
+  resolveContractName,
 };

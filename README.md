@@ -116,6 +116,231 @@ Interest Reserve Policy:
    npm run reserve:check:mainnet
    ```
 
+ETH/WETH Vault Operations:
+
+   Auto-invest keeps a configurable idle buffer in the vault and prints Safe calldata unless `EXECUTE=true` is used with the vault owner signer:
+   ```bash
+   set IDLE_BUFFER_BPS=2000
+   set MIN_INVEST_ETH=0.000001
+   set MAX_INVEST_ETH=
+   npm.cmd run vault:auto-invest:sepolia
+   ```
+
+   Treasury performance fees are minted as treasury-owned vault shares. Encode treasury redemption calldata for the Safe with:
+   ```bash
+   set VAULT_DEPLOYMENT_NAME=strategy-vault
+   set REDEEM_SHARES=all
+   npm.cmd run vault:treasury:encode:sepolia
+   ```
+
+   Strategy manager owner operations can be encoded from the command line:
+   ```bash
+   npm.cmd run strategy-manager:encode:sepolia
+   ```
+
+   Check mainnet deployment inputs before running any mainnet deployment command:
+   ```bash
+   npm.cmd run mainnet:readiness
+   ```
+
+Lending Pool Operations:
+
+   Deploy the isolated ETH lending pool:
+   ```bash
+   set LENDING_OWNER=0xYOUR_SAFE
+   set LENDING_TREASURY=0xYOUR_SAFE
+   set LENDING_BORROW_APR_BPS=800
+   set LENDING_ORIGINATION_FEE_BPS=10
+   set LENDING_MAX_POOL_LIQUIDITY_ETH=2
+   npm.cmd run deploy:lending:sepolia
+   ```
+
+   Run basic user flows:
+   ```bash
+   set ACTION=supply
+   set SUPPLY_AMOUNT_ETH=0.01
+   npm.cmd run lending:sepolia
+
+   set ACTION=borrow-with-collateral
+   set COLLATERAL_AMOUNT_ETH=0.01
+   set BORROW_AMOUNT_ETH=0.005
+   npm.cmd run lending:sepolia
+
+   set ACTION=repay
+   set REPAY_ALL=true
+   npm.cmd run lending:sepolia
+   ```
+
+   The frontend Lending Pool panel is generated from `deployments/lending-pool-<network>.json`:
+   ```bash
+   npm.cmd run compile
+   py -m http.server 5500
+   ```
+
+   Encode Safe owner actions:
+   ```bash
+   set ACTION=set-risk-params
+   set LENDING_MAX_LTV_BPS=6000
+   set LENDING_LIQUIDATION_THRESHOLD_BPS=8000
+   set LENDING_LIQUIDATION_BONUS_BPS=500
+   npm.cmd run lending:encode:sepolia
+   ```
+
+DEX / Swap Fee Operations:
+
+   Deploy a WETH/test-token swap pool on Sepolia:
+   ```bash
+   set SWAP_TOKEN0_ADDRESS=0xYOUR_WETH_ADDRESS
+   set DEPLOY_SWAP_TEST_TOKEN=true
+   set SWAP_OWNER=0xYOUR_SAFE
+   set SWAP_TREASURY=0xYOUR_SAFE
+   set SWAP_FEE_BPS=30
+   set SWAP_PROTOCOL_FEE_SHARE_BPS=2000
+   npm.cmd run deploy:swap:sepolia
+   npm.cmd run compile
+   ```
+
+   Add liquidity and run a test swap:
+   ```bash
+   set ACTION=wrap-token0
+   set WRAP_AMOUNT_ETH=0.002
+   npm.cmd run swap:sepolia
+
+   set ACTION=add-liquidity
+   set SWAP_ADD_TOKEN0_AMOUNT=0.001
+   set SWAP_ADD_TOKEN1_AMOUNT=100
+   npm.cmd run swap:sepolia
+
+   set ACTION=swap
+   set TOKEN_IN=token1
+   set SWAP_AMOUNT_IN=1
+   set SWAP_MIN_AMOUNT_OUT=0
+   npm.cmd run swap:sepolia
+   ```
+
+   Encode Safe owner actions:
+   ```bash
+   set ACTION=set-swap-fee
+   set SWAP_FEE_BPS=25
+   npm.cmd run swap:encode:sepolia
+   ```
+
+Treasury Contract Operations:
+
+   Deploy a Safe-owned suite treasury:
+   ```bash
+   set TREASURY_OWNER=0xYOUR_SAFE
+   npm.cmd run deploy:treasury:sepolia
+   npm.cmd run compile
+   ```
+
+   Check treasury balances, tracked assets, and operator spend policy:
+   ```bash
+   set ACTION=status
+   npm.cmd run treasury:sepolia
+   ```
+
+   Route protocol fee recipients to the treasury contract with Safe calldata:
+   ```bash
+   set ACTION=set-treasury
+   set BANK_TREASURY=0xYOUR_TREASURY_CONTRACT
+   npm.cmd run admin:encode:sepolia
+
+   set ACTION=set-treasury
+   set VAULT_TREASURY=0xYOUR_TREASURY_CONTRACT
+   npm.cmd run strategy-vault:encode:sepolia
+
+   set ACTION=set-treasury
+   set LENDING_TREASURY=0xYOUR_TREASURY_CONTRACT
+   npm.cmd run lending:encode:sepolia
+
+   set ACTION=set-treasury
+   set SWAP_TREASURY=0xYOUR_TREASURY_CONTRACT
+   npm.cmd run swap:encode:sepolia
+   ```
+
+   Encode Safe owner actions:
+   ```bash
+   set ACTION=set-asset-policy
+   set ASSET_ADDRESS=ETH
+   set ASSET_ENABLED=true
+   set SPEND_LIMIT=0.01
+   npm.cmd run treasury:encode:sepolia
+
+   set ACTION=set-operator
+   set TREASURY_OPERATOR=0xYOUR_OPERATOR
+   set TREASURY_OPERATOR_ALLOWED=true
+   npm.cmd run treasury:encode:sepolia
+
+   set ACTION=withdraw-eth
+   set RECIPIENT=0xYOUR_RECIPIENT
+   set AMOUNT_ETH=0.001
+   npm.cmd run treasury:encode:sepolia
+   ```
+
+   Operators can spend only assets with enabled policy and remaining cap:
+   ```bash
+   set ACTION=spend-eth
+   set RECIPIENT=0xYOUR_RECIPIENT
+   set AMOUNT_ETH=0.001
+   npm.cmd run treasury:sepolia
+   ```
+
+Monetization Readiness:
+
+   Run the local smoke test that proves Bank, Vault, Lending, and Swap can generate revenue for the central treasury:
+   ```bash
+   npm.cmd run test:smoke
+   ```
+
+   Run the live read-only revenue report:
+   ```bash
+   set EXPECTED_TREASURY=0xYOUR_TREASURY_CONTRACT
+   npm.cmd run suite:revenue:sepolia
+   ```
+
+   The report checks treasury routing, active fee settings, pending protocol fees, vault treasury shares, and treasury spend policy. A warning means the suite is safe but not earning on that path yet; a failure means routing or deployment config needs correction.
+
+   The treasury owner Safe can execute arbitrary calls from treasury custody when needed, for example to redeem vault shares held by the treasury:
+   ```bash
+   set ACTION=execute
+   set TARGET=0xTARGET_CONTRACT
+   set CALL_VALUE_ETH=0
+   set CALL_DATA=0xENCODED_CALLDATA
+   npm.cmd run treasury:encode:sepolia
+   ```
+
+Production Mainnet Gate:
+
+   Before public mainnet launch, run:
+   ```bash
+   npm.cmd run compile
+   npm.cmd run test:smoke
+   npm.cmd test
+   npm.cmd run coverage
+   npm.cmd run security:slither
+   npm.cmd run security:slither:full
+   npm.cmd run audit:deps
+   npm.cmd run audit:tooling
+   npm.cmd run mainnet:readiness
+   npm.cmd run production:check
+   ```
+
+   After mainnet deployment, verify and run live checks:
+   ```bash
+   npm.cmd run verify:mainnet
+   npm.cmd run reserve:check:mainnet
+   npm.cmd run suite:health:mainnet
+   npm.cmd run suite:revenue:mainnet
+   ```
+
+   Mainnet runbooks:
+   - `docs/PRODUCTION_READINESS.md`
+   - `docs/MAINNET_DEPLOYMENT_RUNBOOK.md`
+   - `docs/INCIDENT_RESPONSE.md`
+   - `docs/STATIC_ANALYSIS.md`
+   - `docs/DEPENDENCY_AUDIT.md`
+
 Contract Overview:
 
    | Function                     | Description                                 | Access              |

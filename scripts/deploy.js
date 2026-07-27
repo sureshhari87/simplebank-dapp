@@ -5,8 +5,10 @@ const path = require("path");
 const MAX_INTEREST_RATE = 500;
 const BASIS_POINTS = 10000n;
 const DAYS_PER_YEAR = 365n;
+const DEFAULT_CONTRACT_NAME = "SimpleBankV3";
 const DEFAULT_INTEREST_RESERVE_PERIOD_DAYS = 30n;
 const MAX_INTEREST_RESERVE_PERIOD_DAYS = 3650n;
+const SUPPORTED_CONTRACT_NAMES = new Set(["SimpleBankV2", "SimpleBankV3"]);
 const LIVE_NETWORKS = new Set(["sepolia", "mainnet"]);
 const EXPECTED_CHAIN_IDS = {
   hardhat: 31337n,
@@ -19,12 +21,25 @@ const SAFE_OWNER_ABI = [
   "function getThreshold() view returns (uint256)",
 ];
 
+function normalizeEnvValue(value) {
+  const normalized = (value || "").trim();
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    return normalized.slice(1, -1).trim();
+  }
+
+  return normalized;
+}
+
 function isPlaceholder(value) {
-  return !value || /YOUR_|PLACEHOLDER|0xYOUR/i.test(value);
+  const normalized = normalizeEnvValue(value);
+  return !normalized || /YOUR_|PLACEHOLDER|0xYOUR/i.test(normalized);
 }
 
 function parseEthAmount(rawAmount, name) {
-  const normalized = (rawAmount || "").trim();
+  const normalized = normalizeEnvValue(rawAmount);
 
   if (!/^\d+(\.\d+)?$/.test(normalized)) {
     throw new Error(`${name} must be a non-negative ETH amount, got: ${rawAmount}`);
@@ -43,7 +58,7 @@ function parseOptionalEthEnv(name) {
 }
 
 function parseInitialInterestRate() {
-  const rawRate = process.env.INITIAL_INTEREST_RATE || "100";
+  const rawRate = normalizeEnvValue(process.env.INITIAL_INTEREST_RATE || "100");
   if (!/^\d+$/.test(rawRate)) {
     throw new Error(`INITIAL_INTEREST_RATE must be an integer basis-point value, got: ${rawRate}`);
   }
@@ -56,6 +71,17 @@ function parseInitialInterestRate() {
   return rate;
 }
 
+function parseContractName() {
+  const contractName = normalizeEnvValue(process.env.CONTRACT_NAME || DEFAULT_CONTRACT_NAME);
+  if (!SUPPORTED_CONTRACT_NAMES.has(contractName)) {
+    throw new Error(
+      `CONTRACT_NAME must be one of ${Array.from(SUPPORTED_CONTRACT_NAMES).join(", ")}, got: ${contractName}`
+    );
+  }
+
+  return contractName;
+}
+
 function parseInitialMaxTotalDeposits(networkName) {
   const rawCap = process.env.INITIAL_MAX_TOTAL_DEPOSITS_ETH || "0";
   const cap = parseEthAmount(rawCap, "INITIAL_MAX_TOTAL_DEPOSITS_ETH");
@@ -66,8 +92,23 @@ function parseInitialMaxTotalDeposits(networkName) {
   return cap;
 }
 
+function parseInitialTreasury(defaultTreasury) {
+  const rawTreasury = normalizeEnvValue(process.env.INITIAL_TREASURY);
+  if (rawTreasury === "") {
+    return defaultTreasury;
+  }
+
+  if (isPlaceholder(rawTreasury)) {
+    throw new Error("INITIAL_TREASURY must be set to a real address or omitted to use INITIAL_OWNER");
+  }
+
+  return rawTreasury.trim();
+}
+
 function parseInterestReservePeriodDays() {
-  const rawDays = process.env.INTEREST_RESERVE_PERIOD_DAYS || DEFAULT_INTEREST_RESERVE_PERIOD_DAYS.toString();
+  const rawDays = normalizeEnvValue(
+    process.env.INTEREST_RESERVE_PERIOD_DAYS || DEFAULT_INTEREST_RESERVE_PERIOD_DAYS.toString()
+  );
 
   if (!/^\d+$/.test(rawDays)) {
     throw new Error(`INTEREST_RESERVE_PERIOD_DAYS must be a positive integer, got: ${rawDays}`);
@@ -110,18 +151,17 @@ function getDeploymentPath(networkName) {
   return path.join(process.cwd(), "deployments", `${networkName}.json`);
 }
 
-async function estimateDeploymentCost(
-  SimpleBankV2,
-  deployer,
-  initialInterestRate,
-  initialOwner,
-  initialMaxTotalDeposits
-) {
-  const deploymentTx = await SimpleBankV2.getDeployTransaction(
-    initialInterestRate,
-    initialOwner,
-    initialMaxTotalDeposits
-  );
+function getDeploymentArgs(contractName, initialInterestRate, initialOwner, initialMaxTotalDeposits, initialTreasury) {
+  const deploymentArgs = [initialInterestRate, initialOwner, initialMaxTotalDeposits];
+  if (contractName === "SimpleBankV3") {
+    deploymentArgs.push(initialTreasury);
+  }
+
+  return deploymentArgs;
+}
+
+async function estimateDeploymentCost(BankContract, deployer, deploymentArgs) {
+  const deploymentTx = await BankContract.getDeployTransaction(...deploymentArgs);
   const estimate = await hre.ethers.provider.estimateGas({
     ...deploymentTx,
     from: deployer.address,
@@ -146,6 +186,7 @@ async function estimateDeploymentCost(
 
 async function runPreflight({ preflightOnly = false } = {}) {
   const networkName = hre.network.name;
+  const contractName = parseContractName();
   const expectedChainId = EXPECTED_CHAIN_IDS[networkName];
   const providerNetwork = await hre.ethers.provider.getNetwork();
   const actualChainId = providerNetwork.chainId;
@@ -192,10 +233,15 @@ async function runPreflight({ preflightOnly = false } = {}) {
   const initialInterestRate = parseInitialInterestRate();
   const initialMaxTotalDeposits = parseInitialMaxTotalDeposits(networkName);
   const interestReservePolicy = getInterestReservePolicy(initialMaxTotalDeposits, initialInterestRate);
-  const initialOwner = process.env.INITIAL_OWNER || deployer.address;
+  const initialOwner = normalizeEnvValue(process.env.INITIAL_OWNER || deployer.address);
+  const initialTreasury = parseInitialTreasury(initialOwner);
 
   if (!hre.ethers.isAddress(initialOwner) || initialOwner === hre.ethers.ZeroAddress) {
     throw new Error(`Invalid INITIAL_OWNER: ${initialOwner}`);
+  }
+
+  if (contractName === "SimpleBankV3" && (!hre.ethers.isAddress(initialTreasury) || initialTreasury === hre.ethers.ZeroAddress)) {
+    throw new Error(`Invalid INITIAL_TREASURY: ${initialTreasury}`);
   }
 
   if (networkName === "mainnet" && initialInterestRate > 0 && interestReservePolicy.requiredReserve === 0n) {
@@ -228,17 +274,25 @@ async function runPreflight({ preflightOnly = false } = {}) {
         `INITIAL_OWNER must be a multisig Safe with threshold >= 2; got ${threshold.toString()} of ${owners.length}`
       );
     }
+
+    if (contractName === "SimpleBankV3") {
+      const treasuryCode = await hre.ethers.provider.getCode(initialTreasury);
+      if (treasuryCode === "0x") {
+        throw new Error("INITIAL_TREASURY must be a deployed contract wallet/multisig on mainnet");
+      }
+    }
   }
 
-  const SimpleBankV2 = await hre.ethers.getContractFactory("SimpleBankV2");
-  const deployerBalance = await hre.ethers.provider.getBalance(deployer.address);
-  const deploymentCost = await estimateDeploymentCost(
-    SimpleBankV2,
-    deployer,
+  const BankContract = await hre.ethers.getContractFactory(contractName);
+  const deploymentArgs = getDeploymentArgs(
+    contractName,
     initialInterestRate,
     initialOwner,
-    initialMaxTotalDeposits
+    initialMaxTotalDeposits,
+    initialTreasury
   );
+  const deployerBalance = await hre.ethers.provider.getBalance(deployer.address);
+  const deploymentCost = await estimateDeploymentCost(BankContract, deployer, deploymentArgs);
 
   if (deployerBalance < deploymentCost.bufferedCost) {
     throw new Error(
@@ -249,9 +303,13 @@ async function runPreflight({ preflightOnly = false } = {}) {
 
   console.log("\nDeployment preflight passed");
   console.log("Network:", networkName);
+  console.log("Contract:", contractName);
   console.log("Chain ID:", actualChainId.toString());
   console.log("Deployer:", deployer.address);
   console.log("Initial owner:", initialOwner);
+  if (contractName === "SimpleBankV3") {
+    console.log("Initial treasury:", initialTreasury);
+  }
   if (networkName === "mainnet") {
     const safe = new hre.ethers.Contract(initialOwner, SAFE_OWNER_ABI, hre.ethers.provider);
     console.log(
@@ -280,11 +338,14 @@ async function runPreflight({ preflightOnly = false } = {}) {
     chainId: actualChainId.toString(),
     deployer,
     deployerBalance,
+    contractName,
     initialInterestRate,
     initialOwner,
+    initialTreasury,
     initialMaxTotalDeposits,
     interestReservePolicy,
-    SimpleBankV2,
+    BankContract,
+    deploymentArgs,
     deploymentCost,
   };
 }
@@ -295,24 +356,30 @@ async function main() {
 
   if (preflightOnly) return;
 
-  console.log(`\nDeploying SimpleBankV2 to ${preflight.networkName}...`);
+  console.log(`\nDeploying ${preflight.contractName} to ${preflight.networkName}...`);
 
-  const bank = await preflight.SimpleBankV2.deploy(
-    preflight.initialInterestRate,
-    preflight.initialOwner,
-    preflight.initialMaxTotalDeposits
-  );
+  const bank = await preflight.BankContract.deploy(...preflight.deploymentArgs);
   await bank.waitForDeployment();
+  const deploymentReceipt = await bank.deploymentTransaction().wait();
 
   const contractAddress = await bank.getAddress();
   const owner = await bank.owner();
   const interestRate = await bank.interestRate();
   const maxTotalDeposits = await bank.maxTotalDeposits();
+  const treasury = preflight.contractName === "SimpleBankV3" ? await bank.treasury() : null;
+  const depositFeeBps = preflight.contractName === "SimpleBankV3" ? await bank.depositFeeBps() : null;
+  const withdrawalFeeBps = preflight.contractName === "SimpleBankV3" ? await bank.withdrawalFeeBps() : null;
   const interestRatePercent = Number(interestRate) / 100;
 
-  console.log("\nSimpleBankV2 deployed successfully!");
+  console.log(`\n${preflight.contractName} deployed successfully!`);
   console.log("Contract address:", contractAddress);
+  console.log("Deployment block:", deploymentReceipt.blockNumber);
   console.log("Owner:", owner);
+  if (treasury) {
+    console.log("Treasury:", treasury);
+    console.log("Deposit fee:", `${Number(depositFeeBps) / 100}%`);
+    console.log("Withdrawal fee:", `${Number(withdrawalFeeBps) / 100}%`);
+  }
   console.log("Interest rate:", `${interestRatePercent}%`);
   console.log("Global TVL cap:", `${hre.ethers.formatEther(maxTotalDeposits)} ETH`);
 
@@ -321,16 +388,19 @@ async function main() {
 
   const deploymentPath = getDeploymentPath(preflight.networkName);
   const data = {
+    contractName: preflight.contractName,
     contractAddress,
     network: preflight.networkName,
     chainId: preflight.chainId,
     deployer: preflight.deployer.address,
     deployedAt: new Date().toISOString(),
+    deploymentBlock: deploymentReceipt.blockNumber,
     interestRate: interestRate.toString(),
     maxTotalDeposits: maxTotalDeposits.toString(),
     maxTotalDepositsEth: hre.ethers.formatEther(maxTotalDeposits),
     owner,
     initialOwner: preflight.initialOwner,
+    constructorArgs: preflight.deploymentArgs.map((arg) => arg.toString()),
     interestReservePolicy: {
       expectedTvl: preflight.interestReservePolicy.expectedTvl.toString(),
       expectedTvlEth: hre.ethers.formatEther(preflight.interestReservePolicy.expectedTvl),
@@ -341,6 +411,13 @@ async function main() {
     },
     estimatedGas: preflight.deploymentCost.gasLimit.toString(),
   };
+
+  if (treasury) {
+    data.treasury = treasury;
+    data.initialTreasury = preflight.initialTreasury;
+    data.depositFeeBps = depositFeeBps.toString();
+    data.withdrawalFeeBps = withdrawalFeeBps.toString();
+  }
 
   fs.writeFileSync(deploymentPath, JSON.stringify(data, null, 2));
   console.log(`Deployment info saved to ${deploymentPath}`);

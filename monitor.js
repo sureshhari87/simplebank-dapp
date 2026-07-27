@@ -1,4 +1,4 @@
-const { Web3 } = require("web3");
+const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
 
@@ -6,12 +6,14 @@ const rpcUrl = process.env.MONITOR_WS_RPC_URL || process.env.SEPOLIA_WS_RPC_URL;
 const contractAddress =
   process.env.CONTRACT_ADDRESS || "0x13e8e9f745E6E9f7Ab512fe25E153359AADCD73b";
 const largeWithdrawalThresholdEth = process.env.LARGE_WITHDRAWAL_THRESHOLD_ETH || "10";
+const contractName = process.env.MONITOR_CONTRACT_NAME || "SimpleBankV3";
+const contractFile = process.env.MONITOR_CONTRACT_FILE || `${contractName}.sol`;
 
 if (!rpcUrl) {
   throw new Error("Set MONITOR_WS_RPC_URL or SEPOLIA_WS_RPC_URL before running monitor.js");
 }
 
-if (!Web3.utils.isAddress(contractAddress)) {
+if (!ethers.isAddress(contractAddress)) {
   throw new Error(`Invalid CONTRACT_ADDRESS: ${contractAddress}`);
 }
 
@@ -19,34 +21,37 @@ const artifactPath = path.join(
   process.cwd(),
   "artifacts",
   "contracts",
-  "SimpleBankV2.sol",
-  "SimpleBankV2.json"
+  contractFile,
+  `${contractName}.json`
 );
 const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
 const contractABI = artifact.abi;
 
-const web3 = new Web3(rpcUrl);
-const contract = new web3.eth.Contract(contractABI, contractAddress);
-const largeWithdrawalThreshold = web3.utils.toWei(largeWithdrawalThresholdEth, "ether");
+const provider = new ethers.WebSocketProvider(rpcUrl);
+const contract = new ethers.Contract(contractAddress, contractABI, provider);
+const largeWithdrawalThreshold = ethers.parseEther(largeWithdrawalThresholdEth);
 
 async function main() {
   console.log(`Monitoring ${contractAddress} for WithdrawalMade events...`);
 
-  const subscription = await contract.events.WithdrawalMade();
-
-  subscription.on("data", (event) => {
-    const { user, amount } = event.returnValues;
-    const ethAmount = web3.utils.fromWei(amount, "ether");
+  contract.on("WithdrawalMade", (user, amount) => {
+    const ethAmount = ethers.formatEther(amount);
 
     console.log(`WithdrawalMade: ${user} withdrew ${ethAmount} ETH`);
 
-    if (BigInt(amount) > BigInt(largeWithdrawalThreshold)) {
+    if (amount > largeWithdrawalThreshold) {
       console.log(`Large withdrawal detected. Amount: ${ethAmount} ETH`);
     }
   });
 
-  subscription.on("error", (error) => {
+  provider.websocket?.on?.("error", (error) => {
     console.error("Event subscription error:", error);
+  });
+
+  process.once("SIGINT", async () => {
+    contract.removeAllListeners();
+    await provider.destroy();
+    process.exit(0);
   });
 }
 
